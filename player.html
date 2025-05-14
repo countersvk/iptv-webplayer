@@ -4,23 +4,65 @@
   <meta charset="utf-8">
   <title>IPTV Player</title>
   <link href="https://vjs.zencdn.net/8.3.0/video-js.css" rel="stylesheet" />
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+    }
+    .loading {
+      color: white;
+      text-align: center;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+    }
+  </style>
 </head>
 <body>
+  <div id="loading" class="loading">Lade Stream...</div>
   <video id="player" class="video-js vjs-default-skin" controls autoplay width="100%" height="auto"></video>
 
   <script src="https://vjs.zencdn.net/8.3.0/video.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    const streamUrl = urlParams.get('url');
-    const video = document.getElementById('player');
+    // Channel Mapping aus der generierten JSON
+    const channelMap = {
+      // Dies wird durch das Python-Skript dynamisch ersetzt
+      __CHANNEL_MAP__
+    };
 
-    if (Hls.isSupported() && streamUrl) {
-      const hls = new Hls();
-      hls.loadSource(streamUrl);
-      hls.attachMedia(video);
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = streamUrl;
+    const urlParams = new URLSearchParams(window.location.search);
+    const channelId = urlParams.get('channel');
+    const directUrl = urlParams.get('url');
+    const video = document.getElementById('player');
+    const loading = document.getElementById('loading');
+
+    function playStream(url) {
+      loading.style.display = 'none';
+      
+      if (Hls.isSupported()) {
+        const hls = new Hls();
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, function() {
+          video.play();
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = url;
+        video.addEventListener('loadedmetadata', function() {
+          video.play();
+        });
+      } else {
+        loading.textContent = 'Stream kann nicht abgespielt werden - HLS wird nicht unterstützt';
+      }
+    }
+
+    if (directUrl) {
+      playStream(directUrl);
+    } else if (channelId && channelMap[channelId]) {
+      playStream(channelMap[channelId]);
+    } else {
+      loading.textContent = 'Kein gültiger Stream gefunden';
     }
   </script>
 </body>
