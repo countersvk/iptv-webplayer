@@ -5,102 +5,73 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>IPTV Player</title>
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background: #000;
-            overflow: hidden;
-        }
-        #player {
-            width: 100vw;
-            height: 100vh;
-            object-fit: contain;
-        }
-        #status {
+        body { margin: 0; padding: 0; background: #000; }
+        video { width: 100%; height: 100vh; }
+        #status { 
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             color: white;
-            font-family: Arial, sans-serif;
+            font-family: Arial;
             text-align: center;
         }
     </style>
 </head>
 <body>
-    <video id="player" playsinline webkit-playsinline></video>
-    <div id="status">Stream wird geladen...</div>
+    <video id="player" controls autoplay playsinline muted></video>
+    <div id="status">Lade Stream...</div>
 
     <script>
-        // Telegram WebApp Integration
-        const tg = window.Telegram.WebApp;
-        tg.expand();
-        
         const player = document.getElementById('player');
         const status = document.getElementById('status');
-        const streamUrl = new URLSearchParams(window.location.search).get('url');
+        const url = new URLSearchParams(window.location.search).get('url');
 
-        // WICHTIG: Für Android WebView
-        player.muted = true;
-        player.setAttribute('autoplay', '');
-        player.setAttribute('playsinline', '');
+        // Telegram WebApp Integration
+        if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.expand();
+            player.muted = true; // Wichtig für Android Autoplay
+        }
 
-        function initPlayer() {
-            if (!streamUrl) {
-                status.textContent = "❌ Keine Stream-URL angegeben";
+        function playStream() {
+            if (!url) {
+                status.textContent = "❌ Keine Stream-URL";
                 return;
             }
 
-            // HLS.js für .m3u8 Streams
-            if (streamUrl.includes('.m3u8')) {
-                if (typeof Hls === 'undefined') {
-                    loadHLS().then(playHLS);
-                } else {
-                    playHLS();
-                }
-            } else {
-                // Direkte Video-Streams
-                player.src = streamUrl;
-                player.load();
-                player.play().catch(e => showError(e));
+            // HLS-Streams (.m3u8)
+            if (url.includes('.m3u8')) {
+                const hlsScript = document.createElement('script');
+                hlsScript.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
+                hlsScript.onload = () => {
+                    const hls = new Hls({ enableWorker: false });
+                    hls.loadSource(url);
+                    hls.attachMedia(player);
+                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                        player.play().then(() => {
+                            player.muted = false;
+                            status.style.display = 'none';
+                        });
+                    });
+                };
+                document.head.appendChild(hlsScript);
+            } 
+            // Normale Streams
+            else {
+                player.src = url;
+                player.oncanplay = () => {
+                    player.play().then(() => {
+                        status.style.display = 'none';
+                    });
+                };
             }
+
+            player.onerror = () => {
+                status.textContent = "❌ Stream konnte nicht geladen werden";
+            };
         }
 
-        function playHLS() {
-            const hls = new Hls({
-                enableWorker: false,  // Wichtig für Android
-                lowLatencyMode: true,
-                startLevel: -1
-            });
-            hls.loadSource(streamUrl);
-            hls.attachMedia(player);
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                player.play().then(() => {
-                    player.muted = false;
-                }).catch(e => showError(e));
-            });
-            hls.on(Hls.Events.ERROR, (event, data) => {
-                showError(`HLS Fehler: ${data.type}`);
-            });
-        }
-
-        function loadHLS() {
-            return new Promise((resolve) => {
-                const script = document.createElement('script');
-                script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
-                script.onload = resolve;
-                document.head.appendChild(script);
-            });
-        }
-
-        function showError(msg) {
-            status.textContent = msg;
-            console.error(msg);
-            tg.showAlert(msg);
-        }
-
-        // Automatisch starten
-        document.addEventListener('DOMContentLoaded', initPlayer);
+        playStream();
     </script>
 </body>
 </html>
