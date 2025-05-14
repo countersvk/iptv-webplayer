@@ -6,30 +6,66 @@
   <title>IPTV Player</title>
   <style>
     body { margin: 0; padding: 0; background: #000; }
-    video { width: 100%; height: 100vh; }
+    #player { width: 100%; height: 100vh; }
     #status { 
       color: white; 
       text-align: center; 
       padding: 20px;
-      font-family: Arial, sans-serif;
+      font-family: Arial;
     }
+    .error { color: #ff4444; }
   </style>
 </head>
 <body>
   <div id="status">Stream wird geladen...</div>
-  <video id="player" controls autoplay></video>
+  <video id="player" controls autoplay playsinline></video>
 
   <script>
     const player = document.getElementById('player');
     const status = document.getElementById('status');
     const url = new URLSearchParams(window.location.search).get('url');
 
-    if (!url) {
-      status.textContent = "❌ Keine Stream-URL angegeben";
+    function playStream() {
+      if (!url) {
+        showError("Keine Stream-URL erhalten");
+        return;
+      }
+
+      // Für HLS-Streams (.m3u8)
+      if (url.includes('.m3u8')) {
+        if (typeof Hls !== 'undefined') {
+          const hls = new Hls();
+          hls.loadSource(url);
+          hls.attachMedia(player);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => player.play());
+        } else if (player.canPlayType('application/vnd.apple.mpegurl')) {
+          player.src = url;
+          player.addEventListener('loadedmetadata', () => player.play());
+        } else {
+          showError("HLS wird nicht unterstützt");
+        }
+      } 
+      // Für normale Streams
+      else {
+        player.src = url;
+        player.addEventListener('canplay', () => player.play());
+      }
+
+      player.onerror = () => showError("Stream konnte nicht geladen werden");
+    }
+
+    function showError(msg) {
+      status.innerHTML = `<span class="error">❌ ${msg}</span>`;
+    }
+
+    // HLS.js bei Bedarf laden
+    if (url && url.includes('.m3u8') && typeof Hls === 'undefined') {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
+      script.onload = playStream;
+      document.head.appendChild(script);
     } else {
-      player.src = url;
-      player.onerror = () => status.textContent = "Fehler beim Abspielen";
-      player.onplaying = () => status.style.display = 'none';
+      playStream();
     }
   </script>
 </body>
