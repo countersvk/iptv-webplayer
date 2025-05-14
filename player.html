@@ -10,7 +10,6 @@
             padding: 0;
             background: #000;
             overflow: hidden;
-            touch-action: manipulation;
         }
         #player {
             width: 100vw;
@@ -36,71 +35,72 @@
         // Telegram WebApp Integration
         const tg = window.Telegram.WebApp;
         tg.expand();
-        tg.enableClosingConfirmation();
         
         const player = document.getElementById('player');
         const status = document.getElementById('status');
-        const params = new URLSearchParams(window.location.search);
-        const streamUrl = params.get('url');
+        const streamUrl = new URLSearchParams(window.location.search).get('url');
+
+        // WICHTIG: Für Android WebView
+        player.muted = true;
+        player.setAttribute('autoplay', '');
+        player.setAttribute('playsinline', '');
 
         function initPlayer() {
             if (!streamUrl) {
-                status.textContent = "Keine Stream-URL angegeben";
+                status.textContent = "❌ Keine Stream-URL angegeben";
                 return;
             }
 
-            // Für HLS-Streams
+            // HLS.js für .m3u8 Streams
             if (streamUrl.includes('.m3u8')) {
-                if (typeof Hls !== 'undefined') {
-                    const hls = new Hls({
-                        enableWorker: false, // Wichtig für Telegram WebView
-                        lowLatencyMode: true
-                    });
-                    hls.loadSource(streamUrl);
-                    hls.attachMedia(player);
-                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                        player.play().catch(e => showError(e));
-                    });
-                } else if (player.canPlayType('application/vnd.apple.mpegurl')) {
-                    player.src = streamUrl;
-                    player.addEventListener('loadedmetadata', () => {
-                        player.play().catch(e => showError(e));
-                    });
+                if (typeof Hls === 'undefined') {
+                    loadHLS().then(playHLS);
                 } else {
-                    showError("HLS wird nicht unterstützt");
+                    playHLS();
                 }
             } else {
-                // Für normale MP4/MPD Streams
+                // Direkte Video-Streams
                 player.src = streamUrl;
                 player.load();
                 player.play().catch(e => showError(e));
             }
+        }
 
-            player.onplaying = () => status.style.display = 'none';
-            player.onerror = () => showError("Fehler beim Abspielen");
+        function playHLS() {
+            const hls = new Hls({
+                enableWorker: false,  // Wichtig für Android
+                lowLatencyMode: true,
+                startLevel: -1
+            });
+            hls.loadSource(streamUrl);
+            hls.attachMedia(player);
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                player.play().then(() => {
+                    player.muted = false;
+                }).catch(e => showError(e));
+            });
+            hls.on(Hls.Events.ERROR, (event, data) => {
+                showError(`HLS Fehler: ${data.type}`);
+            });
+        }
+
+        function loadHLS() {
+            return new Promise((resolve) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
+                script.onload = resolve;
+                document.head.appendChild(script);
+            });
         }
 
         function showError(msg) {
-            status.textContent = `❌ ${msg}`;
-            status.style.display = 'block';
+            status.textContent = msg;
+            console.error(msg);
+            tg.showAlert(msg);
         }
 
-        // HLS.js bei Bedarf laden
-        if (streamUrl && streamUrl.includes('.m3u8') && typeof Hls === 'undefined') {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
-            script.onload = initPlayer;
-            document.head.appendChild(script);
-        } else {
-            document.addEventListener('DOMContentLoaded', initPlayer);
-        }
-
-        // Telegram Event-Handler
-        tg.onEvent('viewportChanged', (event) => {
-            if (event.isStateStable) {
-                player.play().catch(e => console.log("Autoplay blocked:", e));
-            }
-        });
+        // Automatisch starten
+        document.addEventListener('DOMContentLoaded', initPlayer);
     </script>
 </body>
 </html>
