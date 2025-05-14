@@ -6,27 +6,22 @@
   <link href="https://vjs.zencdn.net/8.3.0/video-js.css" rel="stylesheet" />
 </head>
 <body>
-  <video
-    id="my-video"
-    class="video-js vjs-default-skin"
-    controls
-    autoplay
-    width="100%"
-    height="auto">
-  </video>
+  <video id="player" class="video-js vjs-default-skin" controls autoplay width="100%" height="auto"></video>
 
   <script src="https://vjs.zencdn.net/8.3.0/video.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <script>
     const urlParams = new URLSearchParams(window.location.search);
     const streamUrl = urlParams.get('url');
-    const player = videojs('my-video');
+    const video = document.getElementById('player');
 
-    if (streamUrl) {
-      player.src({ src: streamUrl, type: 'application/x-mpegURL' });
-      player.play();
+    if (Hls.isSupported() && streamUrl) {
+      const hls = new Hls();
+      hls.loadSource(streamUrl);
+      hls.attachMedia(video);
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = streamUrl;
     }
   </script>
 </body>
 </html>
-
-
