@@ -1,72 +1,106 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>IPTV Player</title>
-  <style>
-    body { margin: 0; padding: 0; background: #000; }
-    #player { width: 100%; height: 100vh; }
-    #status { 
-      color: white; 
-      text-align: center; 
-      padding: 20px;
-      font-family: Arial;
-    }
-    .error { color: #ff4444; }
-  </style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>IPTV Player</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+        #player {
+            width: 100vw;
+            height: 100vh;
+            object-fit: contain;
+        }
+        #status {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+    </style>
 </head>
 <body>
-  <div id="status">Stream wird geladen...</div>
-  <video id="player" controls autoplay playsinline></video>
+    <video id="player" playsinline webkit-playsinline></video>
+    <div id="status">Stream wird geladen...</div>
 
-  <script>
-    const player = document.getElementById('player');
-    const status = document.getElementById('status');
-    const url = new URLSearchParams(window.location.search).get('url');
+    <script>
+        // Telegram WebApp Integration
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.enableClosingConfirmation();
+        
+        const player = document.getElementById('player');
+        const status = document.getElementById('status');
+        const params = new URLSearchParams(window.location.search);
+        const streamUrl = params.get('url');
 
-    function playStream() {
-      if (!url) {
-        showError("Keine Stream-URL erhalten");
-        return;
-      }
+        function initPlayer() {
+            if (!streamUrl) {
+                status.textContent = "Keine Stream-URL angegeben";
+                return;
+            }
 
-      // Für HLS-Streams (.m3u8)
-      if (url.includes('.m3u8')) {
-        if (typeof Hls !== 'undefined') {
-          const hls = new Hls();
-          hls.loadSource(url);
-          hls.attachMedia(player);
-          hls.on(Hls.Events.MANIFEST_PARSED, () => player.play());
-        } else if (player.canPlayType('application/vnd.apple.mpegurl')) {
-          player.src = url;
-          player.addEventListener('loadedmetadata', () => player.play());
-        } else {
-          showError("HLS wird nicht unterstützt");
+            // Für HLS-Streams
+            if (streamUrl.includes('.m3u8')) {
+                if (typeof Hls !== 'undefined') {
+                    const hls = new Hls({
+                        enableWorker: false, // Wichtig für Telegram WebView
+                        lowLatencyMode: true
+                    });
+                    hls.loadSource(streamUrl);
+                    hls.attachMedia(player);
+                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                        player.play().catch(e => showError(e));
+                    });
+                } else if (player.canPlayType('application/vnd.apple.mpegurl')) {
+                    player.src = streamUrl;
+                    player.addEventListener('loadedmetadata', () => {
+                        player.play().catch(e => showError(e));
+                    });
+                } else {
+                    showError("HLS wird nicht unterstützt");
+                }
+            } else {
+                // Für normale MP4/MPD Streams
+                player.src = streamUrl;
+                player.load();
+                player.play().catch(e => showError(e));
+            }
+
+            player.onplaying = () => status.style.display = 'none';
+            player.onerror = () => showError("Fehler beim Abspielen");
         }
-      } 
-      // Für normale Streams
-      else {
-        player.src = url;
-        player.addEventListener('canplay', () => player.play());
-      }
 
-      player.onerror = () => showError("Stream konnte nicht geladen werden");
-    }
+        function showError(msg) {
+            status.textContent = `❌ ${msg}`;
+            status.style.display = 'block';
+        }
 
-    function showError(msg) {
-      status.innerHTML = `<span class="error">❌ ${msg}</span>`;
-    }
+        // HLS.js bei Bedarf laden
+        if (streamUrl && streamUrl.includes('.m3u8') && typeof Hls === 'undefined') {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
+            script.onload = initPlayer;
+            document.head.appendChild(script);
+        } else {
+            document.addEventListener('DOMContentLoaded', initPlayer);
+        }
 
-    // HLS.js bei Bedarf laden
-    if (url && url.includes('.m3u8') && typeof Hls === 'undefined') {
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
-      script.onload = playStream;
-      document.head.appendChild(script);
-    } else {
-      playStream();
-    }
-  </script>
+        // Telegram Event-Handler
+        tg.onEvent('viewportChanged', (event) => {
+            if (event.isStateStable) {
+                player.play().catch(e => console.log("Autoplay blocked:", e));
+            }
+        });
+    </script>
 </body>
 </html>
